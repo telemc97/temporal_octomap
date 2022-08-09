@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "${default}",
+                "limitSymbolsToIncludedHeaders": false
+            },
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/ros/noetic/include/**",
+                "/home/tilemahos/Safety-Pipeline/devel/include/**",
+                "/home/tilemahos/Safety-Pipeline/src/octomap_ros/include/**",
+                "/home/tilemahos/Safety-Pipeline/src/octomap_msgs/include/**",
+                "/home/tilemahos/Safety-Pipeline/src/octomap/octomap/include/**",
+                "${workspaceFolder}/include"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++14",
+            "configurationProvider": "b2.catkin_tools"
+        }
+    ],
+    "version": 4
+}
