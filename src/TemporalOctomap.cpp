@@ -10,14 +10,14 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   PCLSub(NULL),
   tfPCLSub(NULL),
   octree(NULL),
-  maxRange(-1.0),
-  minRange(-1.0),
-  worldFrameId("/map"), baseFrameId("base_footprint"),
+  maxRange(10.0),
+  minRange(1.0),
+  worldFrameId("map"), baseFrameId("base_footprint"),
   useHeightMap(true),
   colorFactor(0.8),
   latchedTopics(true),
   publishFreeSpace(false),
-  res(0.05),
+  res(1.0),
   treeDepth(0),
   maxTreeDepth(0),
   pointcloudMinX(-std::numeric_limits<double>::max()),
@@ -72,7 +72,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     markerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("occupied_cells_vis_array", 1, latchedTopics);
     mapPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, latchedTopics);
 
-    PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "cloud_in", 5);
+    PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 5);
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
   }
@@ -524,15 +524,10 @@ void TemporalOctomap::handleFreeNodeInBBX(const OcTreeT::iterator& it){
 
 void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied){
   if (it.getDepth() == maxTreeDepth){
-    ROS_WARN("Came here 1a");
     unsigned idx = mapIdx(it.getKey());
-    ROS_WARN("Came here 1b");
-
     if(occupied){
-      ROS_WARN("Came here 1c");
-      gridmap.data[mapIdx(it.getKey())] = 100;
-      ROS_WARN("Came here 1d");
-    }else if(gridmap.data[idx] == -1){
+      gridmap.data[idx] = 100;
+    }else{
       gridmap.data[idx] = 0;
     }
   }else{
