@@ -1,5 +1,6 @@
 //ROS includes
 #include <ros/ros.h>
+#include <std_srvs/Empty.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <nav_msgs/OccupancyGrid.h>
 
@@ -35,16 +36,18 @@ namespace temporal_octomap {
 class TemporalOctomap{
 
 public:
-  TemporalOctomap(const ros::NodeHandle &nh_ = ros::NodeHandle()); //constructor
-  virtual ~TemporalOctomap(); //deconstructor
-
-
   typedef pcl::PointXYZ PCLPoint;
   typedef pcl::PointCloud<pcl::PointXYZ> PCLPointCloud;
   typedef octomap::OcTree OcTreeT;
 
   typedef octomap_msgs::GetOctomap OctomapSrv;
   typedef octomap_msgs::BoundingBoxQuery BBXSrv;
+
+  TemporalOctomap(const ros::NodeHandle &nh_ = ros::NodeHandle()); //constructor
+  virtual ~TemporalOctomap(); //deconstructor
+  bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
+  bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
+
 
   void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
 
@@ -135,6 +138,7 @@ protected:
   ros::Publisher mapPub, markerPub, fmarkerPub;
   message_filters::Subscriber<sensor_msgs::PointCloud2>* PCLSub;
   tf::MessageFilter<sensor_msgs::PointCloud2>* tfPCLSub;
+  ros::ServiceServer clearBBXService, resetService;
 
   tf::TransformListener tfListener;
   std::string worldFrameId;

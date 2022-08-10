@@ -10,8 +10,8 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   PCLSub(NULL),
   tfPCLSub(NULL),
   octree(NULL),
-  maxRange(10.0),
-  minRange(1.0),
+  maxRange(15.0),
+  minRange(2.0),
   worldFrameId("map"), baseFrameId("base_footprint"),
   useHeightMap(true),
   colorFactor(0.8),
@@ -75,6 +75,10 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 5);
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
+
+    clearBBXService = nodeHandle.advertiseService("clear_bbx", &TemporalOctomap::clearBBXSrv, this);
+    resetService = nodeHandle.advertiseService("reset", &TemporalOctomap::resetSrv, this);
+
   }
 
   TemporalOctomap::~TemporalOctomap(){
@@ -601,6 +605,77 @@ std_msgs::ColorRGBA TemporalOctomap::heightMapColor(double h) {
   return color;
 }
 
+
+
+
+
+
+bool TemporalOctomap::resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp) {
+  visualization_msgs::MarkerArray occupiedNodesVis;
+  occupiedNodesVis.markers.resize(treeDepth +1);
+  ros::Time rostime = ros::Time::now();
+  octree->clear();
+  // clear 2D map:
+  gridmap.data.clear();
+  gridmap.info.height = 0.0;
+  gridmap.info.width = 0.0;
+  gridmap.info.resolution = 0.0;
+  gridmap.info.origin.position.x = 0.0;
+  gridmap.info.origin.position.y = 0.0;
+
+  ROS_INFO("Cleared octomap");
+  publishAll(rostime);  // Note: This will return as the octree is empty
+
+  publishProjected2DMap(rostime);
+
+  for (std::size_t i = 0; i < occupiedNodesVis.markers.size(); ++i){
+    occupiedNodesVis.markers[i].header.frame_id = worldFrameId;
+    occupiedNodesVis.markers[i].header.stamp = rostime;
+    occupiedNodesVis.markers[i].ns = "map";
+    occupiedNodesVis.markers[i].id = i;
+    occupiedNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
+    occupiedNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+  }
+  markerPub.publish(occupiedNodesVis);
+
+  visualization_msgs::MarkerArray freeNodesVis;
+  freeNodesVis.markers.resize(treeDepth +1);
+  for (std::size_t i = 0; i < freeNodesVis.markers.size(); ++i){
+    freeNodesVis.markers[i].header.frame_id = worldFrameId;
+    freeNodesVis.markers[i].header.stamp = rostime;
+    freeNodesVis.markers[i].ns = "map";
+    freeNodesVis.markers[i].id = i;
+    freeNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
+    freeNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+  }
+  fmarkerPub.publish(freeNodesVis);
+
+  return true;
+}
+
+
+
+
+
+
+bool TemporalOctomap::clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp){
+  point3d min = pointMsgToOctomap(req.min);
+  point3d max = pointMsgToOctomap(req.max);
+
+  double thresMin = octree->getClampingThresMin();
+  for(OcTreeT::leaf_bbx_iterator it = octree->begin_leafs_bbx(min,max),
+      end=octree->end_leafs_bbx(); it!= end; ++it){
+
+    it->setLogOdds(octomap::logodds(thresMin));
+    //			octree->updateNode(it.getKey(), -6.0f);
+  }
+  // TODO: eval which is faster (setLogOdds+updateInner or updateNode)
+  octree->updateInnerOccupancy();
+
+  publishAll(ros::Time::now());
+
+  return true;
+}
 
 
 
