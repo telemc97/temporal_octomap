@@ -103,8 +103,7 @@ protected:
   /// updates the downprojected 2D map as either occupied or free
   virtual void update2DMap(const OcTreeT::iterator& it, bool occupied);
 
-
-
+  std_msgs::ColorRGBA getColor(double time);
 
   inline bool isInUpdateBBX(const OcTreeT::iterator& it) const {
     // 2^(tree_depth-depth) voxels wide:
@@ -167,7 +166,8 @@ protected:
   double minSizeY;
   double maxRange;
   double minRange;
-  bool publish2DMap ;
+  ros::Duration decaytime;
+  bool publish2DMap;
 
   bool incrementalUpdate;
   bool projectCompleteMap;
@@ -175,5 +175,10 @@ protected:
   bool filterSpeckles;
   bool useHeightMap;
   bool publishFreeSpace;
+
+  std_msgs::ColorRGBA colorFree;
+  std_msgs::ColorRGBA color;
+
+
 };
 }

@@ -13,11 +13,11 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   maxRange(15.0),
   minRange(2.0),
   worldFrameId("map"), baseFrameId("base_footprint"),
-  useHeightMap(true),
+  useHeightMap(false),
   colorFactor(0.8),
   latchedTopics(true),
   publishFreeSpace(false),
-  res(1.0),
+  res(0.8),
   treeDepth(0),
   maxTreeDepth(0),
   pointcloudMinX(-std::numeric_limits<double>::max()),
@@ -43,15 +43,14 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     nodeHandle.param("pointcloud_max_y", pointcloudMaxY,pointcloudMaxY);
     nodeHandle.param("pointcloud_min_z", pointcloudMinZ,pointcloudMinZ);
     nodeHandle.param("pointcloud_max_z", pointcloudMaxZ,pointcloudMaxZ);
-    nodeHandle.param("occupancy_min_z", occupancyMinZ,occupancyMinZ);
-    nodeHandle.param("occupancy_max_z", occupancyMaxZ,occupancyMaxZ);
+    nodeHandle.param("occupancy_min_z", occupancyMinZ,0.0);
+    nodeHandle.param("occupancy_max_z", occupancyMaxZ,30.0);
     nodeHandle.param("min_x_size", minSizeX,minSizeX);
     nodeHandle.param("min_y_size", minSizeY,minSizeY);
     nodeHandle.param("min_range", maxRange,maxRange);
     nodeHandle.param("max_range", minRange,minRange);
     nodeHandle.param("resolution", res,res);
     nodeHandle.param("publish_free_space", publishFreeSpace, publishFreeSpace);
-
     nodeHandle.param("sensor_model/hit", probHit, 0.7);
     nodeHandle.param("sensor_model/miss", probMiss, 0.4);
     nodeHandle.param("sensor_model/min", thresMin, 0.12);
@@ -59,6 +58,12 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     nodeHandle.param("incremental_2D_projection", incrementalUpdate, incrementalUpdate);
 
     nodeHandle.param("latch", latchedTopics, latchedTopics);
+
+    double sec, nsec;
+    nodeHandle.param("decaytime/sec", sec, 15.0);
+    nodeHandle.param("decaytime/nsec", nsec, 0.0);
+    decaytime.sec = sec;
+    decaytime.nsec = nsec;
 
     octree = new OcTreeT(res);
     octree->setProbHit(probHit);
@@ -70,6 +75,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     gridmap.info.resolution = res;
 
     markerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("occupied_cells_vis_array", 1, latchedTopics);
+    fmarkerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, latchedTopics);
     mapPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, latchedTopics);
 
     PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 5);
@@ -78,6 +84,16 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
 
     clearBBXService = nodeHandle.advertiseService("clear_bbx", &TemporalOctomap::clearBBXSrv, this);
     resetService = nodeHandle.advertiseService("reset", &TemporalOctomap::resetSrv, this);
+
+    color.a = 1.0;
+    color.r = 1.0;
+    color.g = 0.0;
+    color.b = 0.0;
+
+    colorFree.a = 1.0;
+    colorFree.r = 0.0;
+    colorFree.g = 1.0;
+    colorFree.b = 0.0;
 
   }
 
@@ -97,6 +113,53 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
       octree = NULL;
     }
   }
+
+
+
+
+
+
+void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
+
+  ros::WallTime startTime = ros::WallTime::now();
+  PCLPointCloud pc;
+  pcl::fromROSMsg(*cloud, pc);
+
+  tf::StampedTransform sensorToWorldTf;
+  try {
+    tfListener.lookupTransform(worldFrameId, cloud->header.frame_id, cloud->header.stamp, sensorToWorldTf);
+  } catch(tf::TransformException& ex){
+    ROS_ERROR_STREAM( "Transform error of sensor data: " << ex.what() << ", quitting callback");
+    return;
+  }
+  Eigen::Matrix4f sensorToWorld;
+  pcl_ros::transformAsMatrix(sensorToWorldTf, sensorToWorld);
+
+  pcl::PassThrough<PCLPoint> pass_x;
+  pass_x.setFilterFieldName("x");
+  pass_x.setFilterLimits(pointcloudMinX, pointcloudMaxX);
+
+  pcl::PassThrough<PCLPoint> pass_y;
+  pass_y.setFilterFieldName("y");
+  pass_y.setFilterLimits(pointcloudMinY, pointcloudMaxY);
+
+  pcl::PassThrough<PCLPoint> pass_z;
+  pass_z.setFilterFieldName("z");
+  pass_z.setFilterLimits(pointcloudMinZ, pointcloudMaxZ);
+  
+  pcl::transformPointCloud(pc, pc, sensorToWorld);
+  pass_x.setInputCloud(pc.makeShared());
+  pass_x.filter(pc);
+  pass_y.setInputCloud(pc.makeShared());
+  pass_y.filter(pc);
+  pass_z.setInputCloud(pc.makeShared());
+  pass_z.filter(pc);
+
+  insertScan(sensorToWorldTf.getOrigin(), pc);
+
+  publishAll(cloud->header.stamp);
+
+}
 
 
 
@@ -234,8 +297,7 @@ void TemporalOctomap::handlePreNodeTraversal(const ros::Time& rostime){
       gridmap.data.clear();
       // init to unknown:
       gridmap.data.resize(gridmap.info.width * gridmap.info.height, -1);
-    }
-    else{
+    }else{
       if (mapChanged(oldMapInfo, gridmap.info)){
           ROS_DEBUG("2D grid map size changed to %dx%d", gridmap.info.width, gridmap.info.height);
           adjustMapData(gridmap, oldMapInfo);
@@ -260,7 +322,7 @@ void TemporalOctomap::handlePreNodeTraversal(const ros::Time& rostime){
        for (unsigned int j = mapUpdateBBXMinY; j <= mapUpdateBBXMaxY; ++j){
           std::fill_n(gridmap.data.begin() + gridmap.info.width*j+mapUpdateBBXMinX,
                       numCols, -1);
-      }
+        }
     }
   }
 }
@@ -371,8 +433,7 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
     if (octree->isNodeOccupied(*it)){ // node occupied
       double z = it.getZ();
       double half_size = it.getSize() / 2.0;
-      if (z + half_size > occupancyMinZ && z - half_size < occupancyMaxZ)
-      {
+      if (z + half_size > occupancyMinZ && z - half_size < occupancyMaxZ){
 
         double size = it.getSize();
         double x = it.getX();
@@ -398,10 +459,6 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
             double minX, minY, minZ, maxX, maxY, maxZ;
             octree->getMetricMin(minX, minY, minZ);
             octree->getMetricMax(maxX, maxY, maxZ);
-
-            double h = (1.0 - std::min(std::max((cubeCenter.z-minZ)/ (maxZ - minZ), 0.0), 1.0)) *colorFactor;
-            occupiedNodesVis.markers[idx].colors.push_back(heightMapColor(h));
-
           }
         }
       }
@@ -446,14 +503,22 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
       occupiedNodesVis.markers[i].scale.x = size;
       occupiedNodesVis.markers[i].scale.y = size;
       occupiedNodesVis.markers[i].scale.z = size;
-      // if (!useColoredMap)
-      //   occupiedNodesVis.markers[i].color = color;
+      occupiedNodesVis.markers[i].lifetime = decaytime;
+      occupiedNodesVis.markers[i].pose = pose;
 
-      if (occupiedNodesVis.markers[i].points.size() > 0)
+      occupiedNodesVis.markers[i].color = getColor(occupiedNodesVis.markers[i].lifetime.toSec());
+
+      if (occupiedNodesVis.markers[i].points.size() > 0){
         occupiedNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
-      else
+      }else{
         occupiedNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+      }
     }
+
+    // for( unsigned i=0; i< occupiedNodesVis.markers.size(); ++i){
+    //   occupiedNodesVis.markers[i].color = getColor(occupiedNodesVis.markers[i].lifetime.toSec());
+    // }    
+
     markerPub.publish(occupiedNodesVis);
   }
 
@@ -470,13 +535,17 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
       freeNodesVis.markers[i].scale.x = size;
       freeNodesVis.markers[i].scale.y = size;
       freeNodesVis.markers[i].scale.z = size;
-      // freeNodesVis.markers[i].color = colorFree;
+      freeNodesVis.markers[i].lifetime = decaytime;
+      freeNodesVis.markers[i].pose = pose;
 
 
-      if (freeNodesVis.markers[i].points.size() > 0)
+      freeNodesVis.markers[i].color = colorFree;
+
+      if (freeNodesVis.markers[i].points.size() > 0){
         freeNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
-      else
+      }else{
         freeNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+      }
     }
     fmarkerPub.publish(freeNodesVis);
   }
@@ -491,47 +560,12 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
 
 
 
-void TemporalOctomap::handleOccupiedNode(const OcTreeT::iterator& it){
-  if (publish2DMap && projectCompleteMap){
-    update2DMap(it, true);
-  }
-}
-
-
-
-void TemporalOctomap::handleFreeNode(const OcTreeT::iterator& it){
-  if (publish2DMap && projectCompleteMap){
-    update2DMap(it, false);
-  }
-}
-
-
-
-void TemporalOctomap::handleOccupiedNodeInBBX(const OcTreeT::iterator& it){
-  if (publish2DMap && !projectCompleteMap){
-    update2DMap(it, true);
-  }
-}
-
-
-
-void TemporalOctomap::handleFreeNodeInBBX(const OcTreeT::iterator& it){
-  if (publish2DMap && !projectCompleteMap){
-    update2DMap(it, false);
-  }
-}
-
-
-
-
-
-
 void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied){
   if (it.getDepth() == maxTreeDepth){
     unsigned idx = mapIdx(it.getKey());
     if(occupied){
       gridmap.data[idx] = 100;
-    }else{
+    }else if (gridmap.data[idx] == -1){
       gridmap.data[idx] = 0;
     }
   }else{
@@ -551,6 +585,57 @@ void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied){
     }
   }
 }
+
+
+
+
+
+
+void TemporalOctomap::handleOccupiedNode(const OcTreeT::iterator& it){
+  if (publish2DMap && projectCompleteMap){
+    update2DMap(it, true);
+  }
+}
+
+void TemporalOctomap::handleFreeNode(const OcTreeT::iterator& it){
+  if (publish2DMap && projectCompleteMap){
+    update2DMap(it, false);
+  }
+}
+
+void TemporalOctomap::handleOccupiedNodeInBBX(const OcTreeT::iterator& it){
+  if (publish2DMap && !projectCompleteMap){
+    update2DMap(it, true);
+  }
+}
+
+void TemporalOctomap::handleFreeNodeInBBX(const OcTreeT::iterator& it){
+  if (publish2DMap && !projectCompleteMap){
+    update2DMap(it, false);
+  }
+}
+
+
+
+
+
+std_msgs::ColorRGBA TemporalOctomap::getColor(double time){
+  std_msgs::ColorRGBA newColor;
+  newColor.a = 1.0;
+  newColor.b = 0.0;
+  double timeleft = time/decaytime.toSec();
+  if (timeleft>=0.5){
+    double blue = -((timeleft-0.5)/0.001961);
+    newColor.r = 1.0;
+    newColor.b = blue;
+  }else{
+    double red = (510*timeleft);
+    newColor.b = 1.0;
+    newColor.r = red;
+  }
+  return newColor;
+}
+
 
 
 
@@ -682,45 +767,5 @@ bool TemporalOctomap::clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp){
 
 
 
-void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
 
-  ros::WallTime startTime = ros::WallTime::now();
-  PCLPointCloud pc;
-  pcl::fromROSMsg(*cloud, pc);
-
-  tf::StampedTransform sensorToWorldTf;
-  try {
-    tfListener.lookupTransform(worldFrameId, cloud->header.frame_id, cloud->header.stamp, sensorToWorldTf);
-  } catch(tf::TransformException& ex){
-    ROS_ERROR_STREAM( "Transform error of sensor data: " << ex.what() << ", quitting callback");
-    return;
-  }
-  Eigen::Matrix4f sensorToWorld;
-  pcl_ros::transformAsMatrix(sensorToWorldTf, sensorToWorld);
-
-  pcl::PassThrough<PCLPoint> pass_x;
-  pass_x.setFilterFieldName("x");
-  pass_x.setFilterLimits(pointcloudMinX, pointcloudMaxX);
-
-  pcl::PassThrough<PCLPoint> pass_y;
-  pass_y.setFilterFieldName("y");
-  pass_y.setFilterLimits(pointcloudMinY, pointcloudMaxY);
-
-  pcl::PassThrough<PCLPoint> pass_z;
-  pass_z.setFilterFieldName("z");
-  pass_z.setFilterLimits(pointcloudMinZ, pointcloudMaxZ);
-  
-  pcl::transformPointCloud(pc, pc, sensorToWorld);
-  pass_x.setInputCloud(pc.makeShared());
-  pass_x.filter(pc);
-  pass_y.setInputCloud(pc.makeShared());
-  pass_y.filter(pc);
-  pass_z.setInputCloud(pc.makeShared());
-  pass_z.filter(pc);
-
-  insertScan(sensorToWorldTf.getOrigin(), pc);
-
-  publishAll(cloud->header.stamp);
-
-}
 }
