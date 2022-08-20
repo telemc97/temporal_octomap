@@ -12,6 +12,7 @@
 
 //PCL includes
 #include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
 #include <pcl/conversions.h>
 #include <pcl_ros/transforms.h>
 #include <pcl/sample_consensus/method_types.h>
@@ -71,7 +72,18 @@ protected:
     for (unsigned i = 0; i < 3; ++i)
       max[i] = std::max(in[i], max[i]);
   };
-    
+
+  static inline void pointcloudPCLToOctomap(const PCLPointCloud& pclCloud, octomap::Pointcloud& octomapCloud){
+    octomapCloud.reserve(pclCloud.points.size());
+
+    PCLPointCloud::const_iterator it;
+    for (it = pclCloud.begin(); it != pclCloud.end(); ++it){
+      // Check if the point is invalid
+      if (!isnan (it->x) && !isnan (it->y) && !isnan (it->z))
+        octomapCloud.push_back(it->x, it->y, it->z);
+    }
+  }
+  
   void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
   virtual void handlePreNodeTraversal(const ros::Time& rostime);
@@ -128,7 +140,7 @@ protected:
   }
 
 
-  OcTreeT* octree;
+  octomap::OcTree* octree;
   octomap::KeyRay keyray;
   octomap::OcTreeKey updateBBXMin;
   octomap::OcTreeKey updateBBXMax;
