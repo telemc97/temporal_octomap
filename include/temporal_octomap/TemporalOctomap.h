@@ -31,6 +31,8 @@
 #include <octomap/octomap.h>
 #include <octomap_ros/conversions.h>
 #include <octomap/OcTreeKey.h>
+#include <octomap/OcTreeStamped.h>
+
 
 namespace temporal_octomap {
 
@@ -39,15 +41,15 @@ class TemporalOctomap{
 public:
   typedef pcl::PointXYZ PCLPoint;
   typedef pcl::PointCloud<pcl::PointXYZ> PCLPointCloud;
-  typedef octomap::OcTree OcTreeT;
+  typedef octomap::OcTreeStamped OcTreeT;
 
   typedef octomap_msgs::GetOctomap OctomapSrv;
   typedef octomap_msgs::BoundingBoxQuery BBXSrv;
 
   TemporalOctomap(const ros::NodeHandle &nh_ = ros::NodeHandle()); //constructor
   virtual ~TemporalOctomap(); //deconstructor
-  bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
-  bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
+  // bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
+  // bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
 
 
   void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
@@ -86,36 +88,41 @@ protected:
   
   void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
-  virtual void handlePreNodeTraversal(const ros::Time& rostime);
+  // virtual void handlePreNodeTraversal(const ros::Time& rostime);
 
-  virtual void handlePostNodeTraversal(const ros::Time& rostime);
+  // virtual void handlePostNodeTraversal(const ros::Time& rostime);
 
-  void publishProjected2DMap(const ros::Time& rostime);
+  // void publishProjected2DMap(const ros::Time& rostime);
 
   void publishAll(const ros::Time& rostime);
   
   /// hook that is called when traversing all nodes of the updated Octree (does nothing here)
-  virtual void handleNode(const OcTreeT::iterator& it) {};
+  // virtual void handleNode(const OcTreeT::iterator& it) {};
 
   /// hook that is called when traversing all nodes of the updated Octree in the updated area (does nothing here)
-  virtual void handleNodeInBBX(const OcTreeT::iterator& it) {};
+  // virtual void handleNodeInBBX(const OcTreeT::iterator& it) {};
 
   /// hook that is called when traversing occupied nodes of the updated Octree
-  virtual void handleOccupiedNode(const OcTreeT::iterator& it);
+  // virtual void handleOccupiedNode(const OcTreeT::iterator& it);
 
   /// hook that is called when traversing occupied nodes in the updated area (updates 2D map projection here)
-  virtual void handleOccupiedNodeInBBX(const OcTreeT::iterator& it);
+  // virtual void handleOccupiedNodeInBBX(const OcTreeT::iterator& it);
 
   /// hook that is called when traversing free nodes of the updated Octree
-  virtual void handleFreeNode(const OcTreeT::iterator& it);
+  // virtual void handleFreeNode(const OcTreeT::iterator& it);
 
   /// hook that is called when traversing free nodes in the updated area (updates 2D map projection here)
-  virtual void handleFreeNodeInBBX(const OcTreeT::iterator& it);
+  // virtual void handleFreeNodeInBBX(const OcTreeT::iterator& it);
   
   /// updates the downprojected 2D map as either occupied or free
-  virtual void update2DMap(const OcTreeT::iterator& it, bool occupied);
+  // virtual void update2DMap(const OcTreeT::iterator& it, bool occupied);
 
-  std_msgs::ColorRGBA getColor(double time);
+  std_msgs::ColorRGBA getColor(int time);
+
+  int getTimeLeft(const OcTreeT::iterator& it);
+
+  virtual void CheckNodes();
+
 
   inline bool isInUpdateBBX(const OcTreeT::iterator& it) const {
     // 2^(tree_depth-depth) voxels wide:
@@ -140,7 +147,7 @@ protected:
   }
 
 
-  octomap::OcTree* octree;
+  OcTreeT* octree;
   octomap::KeyRay keyray;
   octomap::OcTreeKey updateBBXMin;
   octomap::OcTreeKey updateBBXMax;
@@ -178,7 +185,7 @@ protected:
   double minSizeY;
   double maxRange;
   double minRange;
-  ros::Duration decaytime;
+  ros::Time decaytime;
   bool publish2DMap;
 
   bool incrementalUpdate;
