@@ -8,16 +8,17 @@ int main(int argc, char** argv){
   ros::init(argc, argv, "temporal_octomap");
   const ros::NodeHandle nh;
 
-
   TemporalOctomap server(nh);
-  ros::spinOnce();
 
-  try{
-    ros::spin();
-  }catch(std::runtime_error& e){
-    ROS_ERROR("octomap_server exception: %s", e.what());
-    return -1;
-  }
+  ros::MultiThreadedSpinner spinner(4); // Use 4 threads
+  spinner.spin();
+
+  // try{
+  //   ros::spin();
+  // }catch(std::runtime_error& e){
+  //   ROS_ERROR("temporal_octomap exception: %s", e.what());
+  //   return -1;
+  // }
 
   return 0;
 }

@@ -52,7 +52,11 @@ public:
   // bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
 
 
-  void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
+  virtual void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
+
+  void checkNodes(const ros::TimerEvent& event);
+
+  // ros::Time getDecayTime() {return decaytime;}
 
 protected:
 
@@ -88,40 +92,12 @@ protected:
   
   void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
-  // virtual void handlePreNodeTraversal(const ros::Time& rostime);
-
-  // virtual void handlePostNodeTraversal(const ros::Time& rostime);
-
-  // void publishProjected2DMap(const ros::Time& rostime);
-
   void publishAll(const ros::Time& rostime);
-  
-  /// hook that is called when traversing all nodes of the updated Octree (does nothing here)
-  // virtual void handleNode(const OcTreeT::iterator& it) {};
-
-  /// hook that is called when traversing all nodes of the updated Octree in the updated area (does nothing here)
-  // virtual void handleNodeInBBX(const OcTreeT::iterator& it) {};
-
-  /// hook that is called when traversing occupied nodes of the updated Octree
-  // virtual void handleOccupiedNode(const OcTreeT::iterator& it);
-
-  /// hook that is called when traversing occupied nodes in the updated area (updates 2D map projection here)
-  // virtual void handleOccupiedNodeInBBX(const OcTreeT::iterator& it);
-
-  /// hook that is called when traversing free nodes of the updated Octree
-  // virtual void handleFreeNode(const OcTreeT::iterator& it);
-
-  /// hook that is called when traversing free nodes in the updated area (updates 2D map projection here)
-  // virtual void handleFreeNodeInBBX(const OcTreeT::iterator& it);
-  
-  /// updates the downprojected 2D map as either occupied or free
-  // virtual void update2DMap(const OcTreeT::iterator& it, bool occupied);
 
   std_msgs::ColorRGBA getColor(int time);
 
-  int getTimeLeft(const OcTreeT::iterator& it);
+  int getTimeLeft(const OcTreeT::iterator& it, const ros::Time& rostime);
 
-  virtual void CheckNodes();
 
 
   inline bool isInUpdateBBX(const OcTreeT::iterator& it) const {
@@ -156,6 +132,7 @@ protected:
   ros::Publisher mapPub, markerPub, fmarkerPub;
   message_filters::Subscriber<sensor_msgs::PointCloud2>* PCLSub;
   tf::MessageFilter<sensor_msgs::PointCloud2>* tfPCLSub;
+  ros::Timer updateInterval;
   ros::ServiceServer clearBBXService, resetService;
 
   tf::TransformListener tfListener;
@@ -163,9 +140,6 @@ protected:
   std::string baseFrameId;
   nav_msgs::OccupancyGrid gridmap;
   octomap::OcTreeKey paddedMinKey;
-
-  static std_msgs::ColorRGBA heightMapColor(double h);
-
 
   unsigned treeDepth;
   unsigned maxTreeDepth;

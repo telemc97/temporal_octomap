@@ -90,10 +90,10 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 5);
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
-    
 
-    // clearBBXService = nodeHandle.advertiseService("clear_bbx", &TemporalOctomap::clearBBXSrv, this);
-    // resetService = nodeHandle.advertiseService("reset", &TemporalOctomap::resetSrv, this);
+    updateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
+
+    
 
     color.a = 1.0;
     color.r = 1.0;
@@ -279,10 +279,11 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
 
 
 //Delete unseen Nodes;
-void TemporalOctomap::CheckNodes(){
+void TemporalOctomap::checkNodes(const ros::TimerEvent& event){
+  ROS_WARN("checkNodes called");
   OcTreeKey nodeKey;
   for (OcTreeT::iterator it = octree->begin(), end = octree->end(); it != end; ++it){
-    int timeleft = getTimeLeft(it);
+    int timeleft = getTimeLeft(it, ros::Time::now());
     if (timeleft = 0){
       nodeKey = it.getKey();
     }
@@ -295,16 +296,14 @@ void TemporalOctomap::CheckNodes(){
 
 
 
-int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it){
+int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it, const ros::Time& rostime){
   int time_left;
   unsigned int stamp = it->getTimestamp();
   int nsecs = (stamp % 1000) * 1000 * 1000;
   int secs = stamp / 1000;
   ros::Time state_timestamp(secs, nsecs);
-  time_left = (decaytime - state_timestamp).toSec();
-  if (time_left<0){
-    time_left = 0;
-  }
+  time_left = decaytime.toSec() - (rostime - state_timestamp).toSec();
+  if (time_left<0){time_left = 0;}
   return time_left;
 }
 
