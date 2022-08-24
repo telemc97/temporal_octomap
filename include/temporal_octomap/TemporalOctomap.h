@@ -92,13 +92,13 @@ protected:
   
   void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
-  void publishAll(const ros::Time& rostime);
+  void publishAll(const ros::TimerEvent& event);
 
-  std_msgs::ColorRGBA getColor(int time);
+  std_msgs::ColorRGBA getColor(const int timeLeft);
 
-  int getTimeLeft(const OcTreeT::iterator& it, const ros::Time& rostime);
+  int getTimeLeft(const OcTreeT::iterator& it, const ros::WallTime& roswalltime);
 
-
+  bool isSpeckleNode(const octomap::OcTreeKey& key) const;
 
   inline bool isInUpdateBBX(const OcTreeT::iterator& it) const {
     // 2^(tree_depth-depth) voxels wide:
@@ -132,7 +132,9 @@ protected:
   ros::Publisher mapPub, markerPub, fmarkerPub;
   message_filters::Subscriber<sensor_msgs::PointCloud2>* PCLSub;
   tf::MessageFilter<sensor_msgs::PointCloud2>* tfPCLSub;
-  ros::Timer updateInterval;
+  ros::Timer checNodesUpdateInterval;
+  ros::Timer checNodesPublishAll;
+
   ros::ServiceServer clearBBXService, resetService;
 
   tf::TransformListener tfListener;

@@ -91,8 +91,8 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
 
-    updateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
-
+    checNodesUpdateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
+    checNodesPublishAll = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::publishAll, this);
     
 
     color.a = 1.0;
@@ -151,10 +151,9 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
   ROS_DEBUG_STREAM("Bounding box keys (after): " << updateBBXMin[0] << " " <<updateBBXMin[1] << " " << updateBBXMin[2] << " / " <<updateBBXMax[0] << " "<<updateBBXMax[1] << " "<< updateBBXMax[2]);
   
 
-  publishAll(cloud->header.stamp);
+  // publishAll(cloud->header.stamp);
 
 }
-
 
 //CONVERTING TO pcl::PointCloud<pcl::PointXYZ> PCLPointCloud INSTEAD OF PointCloud2
 // void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
@@ -183,7 +182,12 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
 
 // }
 
-void TemporalOctomap::publishAll(const ros::Time& rostime){
+
+
+
+
+
+void TemporalOctomap::publishAll(const ros::TimerEvent& event){
 
   size_t octomapSize = octree->size();
   if (octomapSize <= 1){
@@ -210,6 +214,11 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
     double y = it.getY();
     double z = it.getZ();
 
+    if (filterSpeckles && (it.getDepth() == treeDepth +1) && isSpeckleNode(it.getKey())){
+      ROS_DEBUG("Ignoring single speckle at (%f,%f,%f)", x, y, z);
+      continue;
+    } // else: current octree node is no speckle, send it out
+
     unsigned idx = it.getDepth();
     assert(idx < occupiedNodesVis.markers.size());
 
@@ -220,6 +229,7 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
 
     if (octree->isNodeOccupied(*it)){
       occupiedNodesVis.markers[idx].points.push_back(cubeCenter);
+      occupiedNodesVis.markers[idx].color = getColor(getTimeLeft(it, ros::WallTime::now()));
 
     }else if(!octree->isNodeOccupied(*it)){
       freeNodesVis.markers[idx].points.push_back(cubeCenter);
@@ -230,7 +240,7 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
 
     double size = octree->getNodeSize(i);
     occupiedNodesVis.markers[i].header.frame_id = worldFrameId;
-    occupiedNodesVis.markers[i].header.stamp = rostime;
+    occupiedNodesVis.markers[i].header.stamp = ros::Time::now();
     occupiedNodesVis.markers[i].ns = "map";
     occupiedNodesVis.markers[i].id = i;
     occupiedNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
@@ -238,7 +248,7 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
     occupiedNodesVis.markers[i].scale.y = size;
     occupiedNodesVis.markers[i].scale.z = size;
     occupiedNodesVis.markers[i].pose = pose;
-    occupiedNodesVis.markers[i].color = color;
+
 
     if (occupiedNodesVis.markers[i].points.size() > 0){
       occupiedNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
@@ -252,7 +262,7 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
 
     double size = octree->getNodeSize(i);
     freeNodesVis.markers[i].header.frame_id = worldFrameId;
-    freeNodesVis.markers[i].header.stamp = rostime;
+    freeNodesVis.markers[i].header.stamp = ros::Time::now();
     freeNodesVis.markers[i].ns = "map";
     freeNodesVis.markers[i].id = i;
     freeNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
@@ -278,16 +288,15 @@ void TemporalOctomap::publishAll(const ros::Time& rostime){
 
 
 
-//Delete unseen Nodes;
+//Delete unseen Nodes and other stuff;
 void TemporalOctomap::checkNodes(const ros::TimerEvent& event){
-  ROS_WARN("checkNodes called");
   OcTreeKey nodeKey;
   for (OcTreeT::iterator it = octree->begin(), end = octree->end(); it != end; ++it){
-    int timeleft = getTimeLeft(it, ros::Time::now());
-    if (timeleft = 0){
+    int timeleft = getTimeLeft(it, ros::WallTime::now());
+    if (octree->isNodeOccupied(*it) && timeleft == 0){
       nodeKey = it.getKey();
+      octree->deleteNode(nodeKey);
     }
-    octree->deleteNode(nodeKey);
   }
 }
 
@@ -296,13 +305,10 @@ void TemporalOctomap::checkNodes(const ros::TimerEvent& event){
 
 
 
-int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it, const ros::Time& rostime){
+int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it, const ros::WallTime& roswalltime){
   int time_left;
   unsigned int stamp = it->getTimestamp();
-  int nsecs = (stamp % 1000) * 1000 * 1000;
-  int secs = stamp / 1000;
-  ros::Time state_timestamp(secs, nsecs);
-  time_left = decaytime.toSec() - (rostime - state_timestamp).toSec();
+  time_left = decaytime.toSec() - (roswalltime.toSec() - stamp);
   if (time_left<0){time_left = 0;}
   return time_left;
 }
@@ -312,26 +318,45 @@ int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it, const ros::Time& r
 
 
 
-std_msgs::ColorRGBA TemporalOctomap::getColor(int time){
+std_msgs::ColorRGBA TemporalOctomap::getColor(const int timeLeft){
   std_msgs::ColorRGBA newColor;
   newColor.a = 1.0;
-  newColor.b = 0.0;
-  double timeleft = time/decaytime.toSec();
-  if (timeleft>=0.5){
-    double blue = -((timeleft-0.5)/0.001961);
+  newColor.g = 0.0;
+  double timeleft = 1.0 - (decaytime.toSec()-timeLeft)/decaytime.toSec();
+  if (timeleft>0.5 && timeleft<=1.0){
     newColor.r = 1.0;
-    newColor.b = blue;
-  }else{
-    double red = (510*timeleft);
+    newColor.b = (-2*timeleft + 2);
+  }else if(timeleft>=0 && timeleft <=0.5){
     newColor.b = 1.0;
-    newColor.r = red;
+    newColor.r = (2*timeleft);
   }
+
   return newColor;
 }
 
 
 
 
+
+
+bool TemporalOctomap::isSpeckleNode(const OcTreeKey&nKey) const {
+  OcTreeKey key;
+  bool neighborFound = false;
+  for (key[2] = nKey[2] - 1; !neighborFound && key[2] <= nKey[2] + 1; ++key[2]){
+    for (key[1] = nKey[1] - 1; !neighborFound && key[1] <= nKey[1] + 1; ++key[1]){
+      for (key[0] = nKey[0] - 1; !neighborFound && key[0] <= nKey[0] + 1; ++key[0]){
+        if (key != nKey){
+          OcTreeNode* node = octree->search(key);
+          if (node && octree->isNodeOccupied(node)){
+            // we have a neighbor => break!
+            neighborFound = true;
+          }
+        }
+      }
+    }
+  }
+  return neighborFound;
+}
 
 
 }
