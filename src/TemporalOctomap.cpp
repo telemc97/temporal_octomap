@@ -91,8 +91,11 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
 
-    checNodesUpdateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
-    checNodesPublishAll = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::publishAll, this);
+    checkNodesUpdateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
+
+    PublishMarkers = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::publishMarkers, this);
+
+    PublishOccupancy = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::PublishOccupancyGrid, this);
     
 
     color.a = 1.0;
@@ -149,45 +152,153 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
   maxPt = octree->keyToCoord(updateBBXMax);
   ROS_DEBUG_STREAM("Updated area bounding box: "<< minPt << " - "<<maxPt);
   ROS_DEBUG_STREAM("Bounding box keys (after): " << updateBBXMin[0] << " " <<updateBBXMin[1] << " " << updateBBXMin[2] << " / " <<updateBBXMax[0] << " "<<updateBBXMax[1] << " "<< updateBBXMax[2]);
-  
-
-  // publishAll(cloud->header.stamp);
-
 }
 
-//CONVERTING TO pcl::PointCloud<pcl::PointXYZ> PCLPointCloud INSTEAD OF PointCloud2
-// void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
-
-//   tf::StampedTransform sensorToWorldTf;
-//   tfListener.lookupTransform(worldFrameId, cloud->header.frame_id, cloud->header.stamp, sensorToWorldTf);
-//   tf::Point sensorOriginTf = sensorToWorldTf.getOrigin();
-//   point3d sensorOrigin = pointTfToOctomap(sensorOriginTf); //Get sensor origin
-
-//   PCLPointCloud cloudIn;
-//   pcl::fromROSMsg(*cloud, cloudIn);
-
-//   PCLPointCloud cloudOut;
-//   pcl_ros::transformPointCloud(worldFrameId, cloudIn, cloudOut, tfListener); //Transform PointCloud to world frame
-
-//   Pointcloud OctCloud;
-//   pointcloudPCLToOctomap(cloudOut, OctCloud); //Convert PointCloud to octomap::PointCloud
-
-//   octree->insertPointCloud(OctCloud, sensorOrigin); //Insert octomap::PointCloud to octree
-
-//   octomap::point3d minPt, maxPt;
-//   minPt = octree->keyToCoord(updateBBXMin);
-//   maxPt = octree->keyToCoord(updateBBXMax);
-//   ROS_DEBUG_STREAM("Updated area bounding box: "<< minPt << " - "<<maxPt);
-//   ROS_DEBUG_STREAM("Bounding box keys (after): " << updateBBXMin[0] << " " <<updateBBXMin[1] << " " << updateBBXMin[2] << " / " <<updateBBXMax[0] << " "<<updateBBXMax[1] << " "<< updateBBXMax[2]);
-
-// }
 
 
 
 
 
+void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
+  gridmap.header.frame_id = worldFrameId;
+  gridmap.header.stamp = ros::Time::now();
+  nav_msgs::MapMetaData oldMapInfo = gridmap.info;
 
-void TemporalOctomap::publishAll(const ros::TimerEvent& event){
+  double minX, minY, minZ, maxX, maxY, maxZ;
+  octree->getMetricMax(maxX, maxY, maxZ);
+  octree->getMetricMin(minX, minY, minZ);
+  octomap::point3d minPt(minX, minY, minZ);
+  octomap::point3d maxPt(maxX, maxY, maxZ);
+  octomap::OcTreeKey minKey = octree->coordToKey(minPt, maxTreeDepth);
+  octomap::OcTreeKey maxKey = octree->coordToKey(maxPt, maxTreeDepth);
+  ROS_DEBUG("MinKey: %d %d %d / MaxKey: %d %d %d", minKey[0], minKey[1], minKey[2], maxKey[0], maxKey[1], maxKey[2]);
+  double halfPaddedX = 0.5*minSizeX;
+  double halfPaddedY = 0.5*minSizeY;
+  minX = std::min(minX, -halfPaddedX);
+  maxX = std::max(maxX, halfPaddedX);
+  minY = std::min(minY, -halfPaddedY);
+  maxY = std::max(maxY, halfPaddedY);
+  minPt = octomap::point3d(minX, minY, minZ);
+  maxPt = octomap::point3d(maxX, maxY, maxZ);
+  OcTreeKey paddedMaxKey;
+  if (!octree->coordToKeyChecked(minPt, maxTreeDepth, paddedMinKey)){
+    ROS_ERROR("Could not create padded min OcTree key at %f %f %f", minPt.x(), minPt.y(), minPt.z());
+    return;
+  }
+  if (!octree->coordToKeyChecked(maxPt, maxTreeDepth, paddedMaxKey)){
+    ROS_ERROR("Could not create padded max OcTree key at %f %f %f", maxPt.x(), maxPt.y(), maxPt.z());
+    return;
+  }
+  ROS_DEBUG("Padded MinKey: %d %d %d / padded MaxKey: %d %d %d", paddedMinKey[0], paddedMinKey[1], paddedMinKey[2], paddedMaxKey[0], paddedMaxKey[1], paddedMaxKey[2]);
+  assert(paddedMaxKey[0] >= maxKey[0] && paddedMaxKey[1] >= maxKey[1]);
+  multires2DScale = 1 <<(treeDepth - maxTreeDepth);
+  gridmap.info.width = (paddedMaxKey[0] - paddedMinKey[0])/multires2DScale +1;
+  gridmap.info.height = (paddedMaxKey[1] - paddedMinKey[1])/multires2DScale +1;
+  int mapOriginX = minKey[0] - paddedMinKey[0];
+  int mapOriginY = minKey[1] - paddedMinKey[1];
+  assert(mapOriginX >= 0 && mapOriginY >= 0);
+  octomap::point3d origin = octree->keyToCoord(paddedMinKey, treeDepth);
+  double gridRes = octree->getNodeSize(maxTreeDepth);
+  // projectCompleteMap = (!incrementalUpdate || (std::abs(gridRes-gridmap.info.resolution) > 1e-6));
+  gridmap.info.resolution = gridRes;
+  gridmap.info.origin.position.x = origin.x() - gridRes*0.5;
+  gridmap.info.origin.position.y = origin.y() - gridRes*0.5;
+  if (maxTreeDepth != treeDepth){
+    gridmap.info.origin.position.x -= res/2.0;
+    gridmap.info.origin.position.y -= res/2.0;
+  }
+  if (maxTreeDepth < treeDepth){
+    projectCompleteMap = true;
+  }
+  if(projectCompleteMap){
+    ROS_DEBUG("Rebuilding complete 2D map");
+    gridmap.data.clear();
+    // init to unknown:
+    gridmap.data.resize(gridmap.info.width * gridmap.info.height, -1);
+  }else{
+    if (mapChanged(oldMapInfo, gridmap.info)){
+      ROS_DEBUG("2D grid map size changed to %dx%d", gridmap.info.width, gridmap.info.height);
+      adjustMapData(gridmap, oldMapInfo);
+    }
+    nav_msgs::OccupancyGrid::_data_type::iterator startIt;
+    size_t mapUpdateBBXMinX = std::max(0, (int(updateBBXMin[0]) - int(paddedMinKey[0]))/int(multires2DScale));
+    size_t mapUpdateBBXMinY = std::max(0, (int(updateBBXMin[1]) - int(paddedMinKey[1]))/int(multires2DScale));
+    size_t mapUpdateBBXMaxX = std::min(int(gridmap.info.width-1), (int(updateBBXMax[0]) - int(paddedMinKey[0]))/int(multires2DScale));
+    size_t mapUpdateBBXMaxY = std::min(int(gridmap.info.height-1), (int(updateBBXMax[1]) - int(paddedMinKey[1]))/int(multires2DScale));
+    assert(mapUpdateBBXMaxX > mapUpdateBBXMinX);
+    assert(mapUpdateBBXMaxY > mapUpdateBBXMinY);
+    size_t numCols = mapUpdateBBXMaxX-mapUpdateBBXMinX +1;
+    uint max_idx = gridmap.info.width*mapUpdateBBXMaxY + mapUpdateBBXMaxX;
+    if (max_idx  >= gridmap.data.size()){
+      ROS_ERROR("BBX index not valid: %d (max index %zu for size %d x %d) update-BBX is: [%zu %zu]-[%zu %zu]", max_idx, gridmap.data.size(), gridmap.info.width, gridmap.info.height, mapUpdateBBXMinX, mapUpdateBBXMinY, mapUpdateBBXMaxX, mapUpdateBBXMaxY);
+    }
+    for (unsigned int j = mapUpdateBBXMinY; j <= mapUpdateBBXMaxY; ++j){
+    std::fill_n(gridmap.data.begin() + gridmap.info.width*j+mapUpdateBBXMinX,
+                numCols, -1);
+    }
+  }
+  for (OcTreeT::iterator it = octree->begin(), end = octree->end(); it != end; ++it){
+
+    bool inUpdateBBX = isInUpdateBBX(it);
+    bool occupied;
+
+    if (octree->isNodeOccupied(*it)){
+      occupied = true;
+      if (projectCompleteMap){
+        update2DMap(it, occupied);
+      }
+      if (inUpdateBBX){
+        if (!projectCompleteMap){
+          update2DMap(it, occupied);
+        }
+      }
+    }else{
+      occupied = false;
+      if (projectCompleteMap){
+        update2DMap(it, occupied);
+      }
+      if (inUpdateBBX){
+        if (!projectCompleteMap){
+          update2DMap(it, occupied);
+        }
+      }
+    }
+    mapPub.publish(gridmap);
+  }
+}
+
+void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied){
+  if (it.getDepth() == maxTreeDepth){
+    unsigned idx = mapIdx(it.getKey());
+    if (occupied)
+      gridmap.data[mapIdx(it.getKey())] = 100;
+    else if (gridmap.data[idx] == -1){
+      gridmap.data[idx] = 0;
+    }
+
+  } else{
+    int intSize = 1 << (maxTreeDepth - it.getDepth());
+    octomap::OcTreeKey minKey=it.getIndexKey();
+    for(int dx=0; dx < intSize; dx++){
+      int i = (minKey[0]+dx - paddedMinKey[0])/multires2DScale;
+      for(int dy=0; dy < intSize; dy++){
+        unsigned idx = mapIdx(i, (minKey[1]+dy - paddedMinKey[1])/multires2DScale);
+        if (occupied)
+          gridmap.data[idx] = 100;
+        else if (gridmap.data[idx] == -1){
+          gridmap.data[idx] = 0;
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+
+void TemporalOctomap::publishMarkers(const ros::TimerEvent& event){
 
   size_t octomapSize = octree->size();
   if (octomapSize <= 1){
@@ -279,8 +390,6 @@ void TemporalOctomap::publishAll(const ros::TimerEvent& event){
     }
   }
   fmarkerPub.publish(freeNodesVis);
-
-
 }
 
 

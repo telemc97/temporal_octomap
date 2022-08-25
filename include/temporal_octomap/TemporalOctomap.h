@@ -89,16 +89,20 @@ protected:
         octomapCloud.push_back(it->x, it->y, it->z);
     }
   }
+
+  void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied);
   
   void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
-  void publishAll(const ros::TimerEvent& event);
+  void publishMarkers(const ros::TimerEvent& event);
 
   std_msgs::ColorRGBA getColor(const int timeLeft);
 
   int getTimeLeft(const OcTreeT::iterator& it, const ros::WallTime& roswalltime);
 
   bool isSpeckleNode(const octomap::OcTreeKey& key) const;
+
+  virtual void PublishOccupancyGrid(const ros::TimerEvent& event);
 
   inline bool isInUpdateBBX(const OcTreeT::iterator& it) const {
     // 2^(tree_depth-depth) voxels wide:
@@ -132,8 +136,9 @@ protected:
   ros::Publisher mapPub, markerPub, fmarkerPub;
   message_filters::Subscriber<sensor_msgs::PointCloud2>* PCLSub;
   tf::MessageFilter<sensor_msgs::PointCloud2>* tfPCLSub;
-  ros::Timer checNodesUpdateInterval;
-  ros::Timer checNodesPublishAll;
+  ros::Timer checkNodesUpdateInterval;
+  ros::Timer PublishMarkers;
+  ros::Timer PublishOccupancy;
 
   ros::ServiceServer clearBBXService, resetService;
 
