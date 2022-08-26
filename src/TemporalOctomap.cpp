@@ -13,10 +13,11 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   maxRange(15.0),
   minRange(2.0),
   worldFrameId("map"), baseFrameId("base_footprint"),
-  useHeightMap(false),
   colorFactor(0.8),
   latchedTopics(true),
   publishFreeSpace(false),
+  publishMarkersTopic(true),
+  publishOccupancyGridTopic(true),
   res(0.8),
   treeDepth(0),
   maxTreeDepth(0),
@@ -35,8 +36,9 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
 
     nodeHandle.param("frame_id", worldFrameId, worldFrameId);
     nodeHandle.param("base_frame_id", baseFrameId, baseFrameId);
-    nodeHandle.param("height_map", useHeightMap, useHeightMap);
     nodeHandle.param("color_factor", colorFactor, colorFactor);
+    nodeHandle.param("publish_Markers_Topic", publishMarkersTopic,publishMarkersTopic);
+    nodeHandle.param("publish_Occupancy_Grid_Topic", publishOccupancyGridTopic,publishOccupancyGridTopic);
     nodeHandle.param("pointcloud_min_x", pointcloudMinX,pointcloudMinX);
     nodeHandle.param("pointcloud_max_x", pointcloudMaxX,pointcloudMaxX);
     nodeHandle.param("pointcloud_min_y", pointcloudMinY,pointcloudMinY);
@@ -91,11 +93,10 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
 
+    //Timer-Based Callbacks' timers
     checkNodesUpdateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
-
-    PublishMarkers = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::publishMarkers, this);
-
-    PublishOccupancy = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::PublishOccupancyGrid, this);
+    if (publishMarkersTopic){PublishMarkers = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::publishMarkers, this);}
+    if (publishOccupancyGridTopic){PublishOccupancy = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::PublishOccupancyGrid, this);}
     
 
     color.a = 1.0;
@@ -126,6 +127,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
       octree = NULL;
     }
   }
+
 
 
 
@@ -163,7 +165,6 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
   gridmap.header.frame_id = worldFrameId;
   gridmap.header.stamp = ros::Time::now();
   nav_msgs::MapMetaData oldMapInfo = gridmap.info;
-
   double minX, minY, minZ, maxX, maxY, maxZ;
   octree->getMetricMax(maxX, maxY, maxZ);
   octree->getMetricMin(minX, minY, minZ);
@@ -199,7 +200,7 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
   assert(mapOriginX >= 0 && mapOriginY >= 0);
   octomap::point3d origin = octree->keyToCoord(paddedMinKey, treeDepth);
   double gridRes = octree->getNodeSize(maxTreeDepth);
-  // projectCompleteMap = (!incrementalUpdate || (std::abs(gridRes-gridmap.info.resolution) > 1e-6));
+  projectCompleteMap = (!incrementalUpdate || (std::abs(gridRes-gridmap.info.resolution) > 1e-6));
   gridmap.info.resolution = gridRes;
   gridmap.info.origin.position.x = origin.x() - gridRes*0.5;
   gridmap.info.origin.position.y = origin.y() - gridRes*0.5;
@@ -218,7 +219,32 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
   }else{
     if (mapChanged(oldMapInfo, gridmap.info)){
       ROS_DEBUG("2D grid map size changed to %dx%d", gridmap.info.width, gridmap.info.height);
-      adjustMapData(gridmap, oldMapInfo);
+      // adjustMapData(gridmap, oldMapInfo);
+      if (gridmap.info.resolution != oldMapInfo.resolution){
+        ROS_ERROR("Resolution of map changed, cannot be adjusted");
+        return;
+      }
+      int i_off = int((oldMapInfo.origin.position.x - gridmap.info.origin.position.x)/gridmap.info.resolution +0.5);
+      int j_off = int((oldMapInfo.origin.position.y - gridmap.info.origin.position.y)/gridmap.info.resolution +0.5);
+      if (i_off < 0 || j_off < 0
+          || oldMapInfo.width  + i_off > gridmap.info.width
+          || oldMapInfo.height + j_off > gridmap.info.height)
+      {
+        ROS_ERROR("New 2D map does not contain old map area, this case is not implemented");
+        return;
+      }
+      nav_msgs::OccupancyGrid::_data_type oldMapData = gridmap.data;
+      gridmap.data.clear();
+      // init to unknown:
+      gridmap.data.resize(gridmap.info.width * gridmap.info.height, -1);
+      nav_msgs::OccupancyGrid::_data_type::iterator fromStart, fromEnd, toStart;
+      for (int j =0; j < int(oldMapInfo.height); ++j ){
+        // copy chunks, row by row:
+        fromStart = oldMapData.begin() + j*oldMapInfo.width;
+        fromEnd = fromStart + oldMapInfo.width;
+        toStart = gridmap.data.begin() + ((j+j_off)*gridmap.info.width + i_off);
+        copy(fromStart, fromEnd, toStart);
+      }
     }
     nav_msgs::OccupancyGrid::_data_type::iterator startIt;
     size_t mapUpdateBBXMinX = std::max(0, (int(updateBBXMin[0]) - int(paddedMinKey[0]))/int(multires2DScale));

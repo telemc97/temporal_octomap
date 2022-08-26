@@ -60,8 +60,6 @@ public:
 
 protected:
 
-  void adjustMapData(nav_msgs::OccupancyGrid& map, const nav_msgs::MapMetaData& oldMapInfo) const;
-
   inline bool mapChanged(const nav_msgs::MapMetaData& oldMapInfo, const nav_msgs::MapMetaData& newMapInfo) {
     return (    oldMapInfo.height != newMapInfo.height
                 || oldMapInfo.width != newMapInfo.width
@@ -90,11 +88,11 @@ protected:
     }
   }
 
-  void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied);
+  virtual void update2DMap(const OcTreeT::iterator& it, bool occupied);
   
-  void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
+  // virtual void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
-  void publishMarkers(const ros::TimerEvent& event);
+  virtual void publishMarkers(const ros::TimerEvent& event);
 
   std_msgs::ColorRGBA getColor(const int timeLeft);
 
@@ -173,8 +171,9 @@ protected:
   bool projectCompleteMap;
   bool latchedTopics;
   bool filterSpeckles;
-  bool useHeightMap;
   bool publishFreeSpace;
+  bool publishMarkersTopic;
+  bool publishOccupancyGridTopic;
 
   std_msgs::ColorRGBA colorFree;
   std_msgs::ColorRGBA color;
