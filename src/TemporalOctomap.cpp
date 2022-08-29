@@ -215,7 +215,7 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
     ROS_DEBUG("Rebuilding complete 2D map");
     gridmap.data.clear();
     // init to unknown:
-    gridmap.data.resize(gridmap.info.width * gridmap.info.height, -1);
+    gridmap.data.resize(gridmap.info.width * gridmap.info.height, 0);
   }else{
     if (mapChanged(oldMapInfo, gridmap.info)){
       ROS_DEBUG("2D grid map size changed to %dx%d", gridmap.info.width, gridmap.info.height);
@@ -236,7 +236,7 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
       nav_msgs::OccupancyGrid::_data_type oldMapData = gridmap.data;
       gridmap.data.clear();
       // init to unknown:
-      gridmap.data.resize(gridmap.info.width * gridmap.info.height, -1);
+      gridmap.data.resize(gridmap.info.width * gridmap.info.height, 0);
       nav_msgs::OccupancyGrid::_data_type::iterator fromStart, fromEnd, toStart;
       for (int j =0; j < int(oldMapInfo.height); ++j ){
         // copy chunks, row by row:
