@@ -11,7 +11,6 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   tfPCLSub(NULL),
   octree(NULL),
   maxRange(15.0),
-  minRange(2.0),
   worldFrameId("map"), baseFrameId("base_footprint"),
   colorFactor(0.8),
   latchedTopics(true),
@@ -21,14 +20,6 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   res(0.8),
   treeDepth(0),
   maxTreeDepth(0),
-  pointcloudMinX(-std::numeric_limits<double>::max()),
-  pointcloudMaxX(std::numeric_limits<double>::max()),
-  pointcloudMinY(-std::numeric_limits<double>::max()),
-  pointcloudMaxY(std::numeric_limits<double>::max()),
-  pointcloudMinZ(-std::numeric_limits<double>::max()),
-  pointcloudMaxZ(std::numeric_limits<double>::max()),
-  occupancyMinZ(-std::numeric_limits<double>::max()),
-  occupancyMaxZ(std::numeric_limits<double>::max()),
   minSizeX(0.0), minSizeY(0.0),
   incrementalUpdate(false)
   {
@@ -39,22 +30,13 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     nodeHandle.param("color_factor", colorFactor, colorFactor);
     nodeHandle.param("publish_Markers_Topic", publishMarkersTopic,publishMarkersTopic);
     nodeHandle.param("publish_Occupancy_Grid_Topic", publishOccupancyGridTopic,publishOccupancyGridTopic);
-    nodeHandle.param("pointcloud_min_x", pointcloudMinX,pointcloudMinX);
-    nodeHandle.param("pointcloud_max_x", pointcloudMaxX,pointcloudMaxX);
-    nodeHandle.param("pointcloud_min_y", pointcloudMinY,pointcloudMinY);
-    nodeHandle.param("pointcloud_max_y", pointcloudMaxY,pointcloudMaxY);
-    nodeHandle.param("pointcloud_min_z", pointcloudMinZ,pointcloudMinZ);
-    nodeHandle.param("pointcloud_max_z", pointcloudMaxZ,pointcloudMaxZ);
-    nodeHandle.param("occupancy_min_z", occupancyMinZ,0.0);
-    nodeHandle.param("occupancy_max_z", occupancyMaxZ,30.0);
     nodeHandle.param("min_x_size", minSizeX,minSizeX);
     nodeHandle.param("min_y_size", minSizeY,minSizeY);
     nodeHandle.param("min_range", maxRange,maxRange);
-    nodeHandle.param("max_range", minRange,minRange);
     nodeHandle.param("resolution", res,res);
     nodeHandle.param("publish_free_space", publishFreeSpace, publishFreeSpace);
-    nodeHandle.param("sensor_model/hit", probHit, 0.7);
-    nodeHandle.param("sensor_model/miss", probMiss, 0.4);
+    nodeHandle.param("sensor_model/hit", probHit, 0.8);
+    nodeHandle.param("sensor_model/miss", probMiss, 0.2);
     nodeHandle.param("sensor_model/min", thresMin, 0.12);
     nodeHandle.param("sensor_model/max", thresMax, 0.97);
     nodeHandle.param("incremental_2D_projection", incrementalUpdate, incrementalUpdate);
@@ -62,7 +44,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     nodeHandle.param("latch", latchedTopics, latchedTopics);
 
     double sec, nsec;
-    nodeHandle.param("decaytime/sec", sec, 15.0);
+    nodeHandle.param("decaytime/sec", sec, 25.0);
     nodeHandle.param("decaytime/nsec", nsec, 0.0);
     decaytime.sec = sec;
     decaytime.nsec = nsec;

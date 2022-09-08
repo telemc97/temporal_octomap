@@ -47,7 +47,7 @@ public:
   typedef octomap_msgs::BoundingBoxQuery BBXSrv;
 
   TemporalOctomap(const ros::NodeHandle &nh_ = ros::NodeHandle()); //constructor
-  virtual ~TemporalOctomap(); //deconstructor
+  virtual ~TemporalOctomap(); //destructor
   // bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
   // bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
 
@@ -152,14 +152,6 @@ protected:
 
   double colorFactor;
   double res;
-  double pointcloudMinX;
-  double pointcloudMaxX;
-  double pointcloudMinY;
-  double pointcloudMaxY;
-  double pointcloudMinZ;
-  double pointcloudMaxZ;
-  double occupancyMinZ;
-  double occupancyMaxZ;
   double minSizeX;
   double minSizeY;
   double maxRange;
