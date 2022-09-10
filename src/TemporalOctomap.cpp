@@ -17,7 +17,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   publishFreeSpace(false),
   publishMarkersTopic(true),
   publishOccupancyGridTopic(true),
-  res(0.8),
+  res(1.0),
   treeDepth(0),
   maxTreeDepth(0),
   minSizeX(0.0), minSizeY(0.0),
@@ -35,10 +35,10 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     nodeHandle.param("min_range", maxRange,maxRange);
     nodeHandle.param("resolution", res,res);
     nodeHandle.param("publish_free_space", publishFreeSpace, publishFreeSpace);
-    nodeHandle.param("sensor_model/hit", probHit, 0.8);
-    nodeHandle.param("sensor_model/miss", probMiss, 0.2);
-    nodeHandle.param("sensor_model/min", thresMin, 0.12);
-    nodeHandle.param("sensor_model/max", thresMax, 0.97);
+    nodeHandle.param("sensor_model/hit", probHit, 0.9);
+    nodeHandle.param("sensor_model/miss", probMiss, 0.1);
+    nodeHandle.param("sensor_model/min", thresMin, 0.1);
+    nodeHandle.param("sensor_model/max", thresMax, 0.9);
     nodeHandle.param("incremental_2D_projection", incrementalUpdate, incrementalUpdate);
 
     nodeHandle.param("latch", latchedTopics, latchedTopics);
