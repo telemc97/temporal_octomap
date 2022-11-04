@@ -15,7 +15,7 @@
         {
             "label": "build all packages",
             "type": "shell",
-            "command": "cd ~/Safety-Pipeline/ && catkin config --extend /opt/ros/noetic && catkin build -DCMAKE_BUILD_TYPE=Debug -j8",
+            "command": "cd ~/safety-pipeline/ && catkin config --extend /opt/ros/noetic && catkin build -DCMAKE_BUILD_TYPE=Debug -j8",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -25,7 +25,7 @@
         {
             "label": "build package only",
             "type": "shell",
-            "command": "cd ~/Safety-Pipeline/ && catkin config --extend /opt/ros/noetic && catkin build ${workspaceFolderBasename} -DCMAKE_BUILD_TYPE=Debug -j8",
+            "command": "cd ~/safety-pipeline/ && catkin config --extend /opt/ros/noetic && catkin build ${workspaceFolderBasename} -DCMAKE_BUILD_TYPE=Debug -j8",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -35,7 +35,7 @@
         {
             "label": "clean",
             "type": "shell",
-            "command": "cd ~/Safety-Pipeline/ && catkin clean --yes"
+            "command": "cd ~/safety-pipeline/ && catkin clean --yes"
         },
         {
             "label": "release",
