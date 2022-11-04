@@ -13,39 +13,39 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   maxRange(15.0),
   worldFrameId("map"), baseFrameId("base_footprint"),
   colorFactor(0.8),
+  sec(3600),
+  nsec(0),
   latchedTopics(true),
   publishFreeSpace(false),
   publishMarkersTopic(true),
-  publishOccupancyGridTopic(true),
   res(1.0),
   treeDepth(0),
   maxTreeDepth(0),
   minSizeX(0.0), minSizeY(0.0),
   incrementalUpdate(false)
   {
-    double probHit, probMiss, thresMin, thresMax;
+    double probHit, probMiss, thresMin, thresMax, occupancyThres;
 
     nodeHandle.param("frame_id", worldFrameId, worldFrameId);
     nodeHandle.param("base_frame_id", baseFrameId, baseFrameId);
     nodeHandle.param("color_factor", colorFactor, colorFactor);
     nodeHandle.param("publish_Markers_Topic", publishMarkersTopic,publishMarkersTopic);
-    nodeHandle.param("publish_Occupancy_Grid_Topic", publishOccupancyGridTopic,publishOccupancyGridTopic);
     nodeHandle.param("min_x_size", minSizeX,minSizeX);
     nodeHandle.param("min_y_size", minSizeY,minSizeY);
     nodeHandle.param("min_range", maxRange,maxRange);
     nodeHandle.param("resolution", res,res);
     nodeHandle.param("publish_free_space", publishFreeSpace, publishFreeSpace);
-    nodeHandle.param("sensor_model/hit", probHit, 0.9);
-    nodeHandle.param("sensor_model/miss", probMiss, 0.1);
-    nodeHandle.param("sensor_model/min", thresMin, 0.1);
-    nodeHandle.param("sensor_model/max", thresMax, 0.9);
+    nodeHandle.param("sensor_model/hit", probHit, 0.85);
+    nodeHandle.param("sensor_model/miss", probMiss, 0.15);
+    nodeHandle.param("sensor_model/min", thresMin, 0.3);
+    nodeHandle.param("sensor_model/max", thresMax, 0.7);
+    nodeHandle.param("Occupancy_Thres",occupancyThres, 0.45);
     nodeHandle.param("incremental_2D_projection", incrementalUpdate, incrementalUpdate);
 
     nodeHandle.param("latch", latchedTopics, latchedTopics);
 
-    double sec, nsec;
-    nodeHandle.param("decaytime/sec", sec, 25.0);
-    nodeHandle.param("decaytime/nsec", nsec, 0.0);
+    nodeHandle.param("decaytime/sec", sec, sec);
+    nodeHandle.param("decaytime/nsec", nsec, nsec);
     decaytime.sec = sec;
     decaytime.nsec = nsec;
 
@@ -54,6 +54,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     octree->setProbMiss(probMiss);
     octree->setClampingThresMin(thresMin);  
     octree->setClampingThresMax(thresMax);
+    octree->setOccupancyThres(occupancyThres);
     
     treeDepth = octree->getTreeDepth();
     maxTreeDepth = treeDepth;
@@ -76,9 +77,14 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
 
     //Timer-Based Callbacks' timers
-    checkNodesUpdateInterval = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::checkNodes, this);
-    if (publishMarkersTopic){PublishMarkers = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::publishMarkers, this);}
-    if (publishOccupancyGridTopic){PublishOccupancy = nodeHandle.createTimer(ros::Duration(0.5), &TemporalOctomap::PublishOccupancyGrid, this);}
+    checkNodesUpdateInterval = nodeHandle.createTimer(ros::Rate(1), &TemporalOctomap::checkNodes, this);
+    PublishOccupancy = nodeHandle.createTimer(ros::Rate(1), &TemporalOctomap::PublishOccupancyGrid, this);
+
+    if (publishMarkersTopic){
+      PublishMarkers = nodeHandle.createTimer(ros::Rate(1), &TemporalOctomap::publishMarkers, this);
+    }
+
+      
     
 
     color.a = 1.0;
@@ -112,9 +118,6 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
 
 
 
-
-
-
 //USING PointCloud2
 void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
 
@@ -137,10 +140,6 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
   ROS_DEBUG_STREAM("Updated area bounding box: "<< minPt << " - "<<maxPt);
   ROS_DEBUG_STREAM("Bounding box keys (after): " << updateBBXMin[0] << " " <<updateBBXMin[1] << " " << updateBBXMin[2] << " / " <<updateBBXMax[0] << " "<<updateBBXMax[1] << " "<< updateBBXMax[2]);
 }
-
-
-
-
 
 
 void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
@@ -175,8 +174,12 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
   ROS_DEBUG("Padded MinKey: %d %d %d / padded MaxKey: %d %d %d", paddedMinKey[0], paddedMinKey[1], paddedMinKey[2], paddedMaxKey[0], paddedMaxKey[1], paddedMaxKey[2]);
   assert(paddedMaxKey[0] >= maxKey[0] && paddedMaxKey[1] >= maxKey[1]);
   multires2DScale = 1 <<(treeDepth - maxTreeDepth);
-  gridmap.info.width = (paddedMaxKey[0] - paddedMinKey[0])/multires2DScale +1;
-  gridmap.info.height = (paddedMaxKey[1] - paddedMinKey[1])/multires2DScale +1;
+  uint32_t width = (paddedMaxKey[0] - paddedMinKey[0])/multires2DScale + 1;
+  uint32_t height = (paddedMaxKey[1] - paddedMinKey[1])/multires2DScale + 1;
+  if (height%2!=0){height = height+1;}
+  if (width%2!=0){width = width+1;}
+  gridmap.info.width = width;
+  gridmap.info.height = height;
   int mapOriginX = minKey[0] - paddedMinKey[0];
   int mapOriginY = minKey[1] - paddedMinKey[1];
   assert(mapOriginX >= 0 && mapOriginY >= 0);
@@ -271,9 +274,10 @@ void TemporalOctomap::PublishOccupancyGrid(const ros::TimerEvent& event){
         }
       }
     }
-    mapPub.publish(gridmap);
   }
+  mapPub.publish(gridmap);
 }
+
 
 void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied){
   if (it.getDepth() == maxTreeDepth){
@@ -300,10 +304,6 @@ void TemporalOctomap::update2DMap(const OcTreeT::iterator& it, bool occupied){
     }
   }
 }
-
-
-
-
 
 
 void TemporalOctomap::publishMarkers(const ros::TimerEvent& event){
@@ -401,10 +401,6 @@ void TemporalOctomap::publishMarkers(const ros::TimerEvent& event){
 }
 
 
-
-
-
-
 //Delete unseen Nodes and other stuff;
 void TemporalOctomap::checkNodes(const ros::TimerEvent& event){
   OcTreeKey nodeKey;
@@ -418,10 +414,6 @@ void TemporalOctomap::checkNodes(const ros::TimerEvent& event){
 }
 
 
-
-
-
-
 int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it, const ros::WallTime& roswalltime){
   int time_left;
   unsigned int stamp = it->getTimestamp();
@@ -429,10 +421,6 @@ int TemporalOctomap::getTimeLeft(const OcTreeT::iterator& it, const ros::WallTim
   if (time_left<0){time_left = 0;}
   return time_left;
 }
-
-
-
-
 
 
 std_msgs::ColorRGBA TemporalOctomap::getColor(const int timeLeft){
@@ -450,10 +438,6 @@ std_msgs::ColorRGBA TemporalOctomap::getColor(const int timeLeft){
 
   return newColor;
 }
-
-
-
-
 
 
 bool TemporalOctomap::isSpeckleNode(const OcTreeKey&nKey) const {

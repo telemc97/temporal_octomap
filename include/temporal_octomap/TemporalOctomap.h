@@ -88,11 +88,11 @@ protected:
     }
   }
 
-  virtual void update2DMap(const OcTreeT::iterator& it, bool occupied);
+  void update2DMap(const OcTreeT::iterator& it, bool occupied);
   
   // virtual void insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& pcl);
 
-  virtual void publishMarkers(const ros::TimerEvent& event);
+  void publishMarkers(const ros::TimerEvent& event);
 
   std_msgs::ColorRGBA getColor(const int timeLeft);
 
@@ -100,7 +100,7 @@ protected:
 
   bool isSpeckleNode(const octomap::OcTreeKey& key) const;
 
-  virtual void PublishOccupancyGrid(const ros::TimerEvent& event);
+  void PublishOccupancyGrid(const ros::TimerEvent& event);
 
   inline bool isInUpdateBBX(const OcTreeT::iterator& it) const {
     // 2^(tree_depth-depth) voxels wide:
@@ -155,6 +155,7 @@ protected:
   double minSizeX;
   double minSizeY;
   double maxRange;
+  int sec, nsec;
   double minRange;
   ros::Time decaytime;
   bool publish2DMap;
@@ -165,7 +166,6 @@ protected:
   bool filterSpeckles;
   bool publishFreeSpace;
   bool publishMarkersTopic;
-  bool publishOccupancyGridTopic;
 
   std_msgs::ColorRGBA colorFree;
   std_msgs::ColorRGBA color;
