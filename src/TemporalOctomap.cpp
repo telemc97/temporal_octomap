@@ -11,7 +11,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   tfPCLSub(NULL),
   octree(NULL),
   maxRange(15.0),
-  worldFrameId("map"), baseFrameId("base_footprint"),
+  worldFrameId("map"),
   colorFactor(0.8),
   sec(3600),
   nsec(0),
@@ -27,12 +27,11 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     double probHit, probMiss, thresMin, thresMax, occupancyThres;
 
     nodeHandle.param("frame_id", worldFrameId, worldFrameId);
-    nodeHandle.param("base_frame_id", baseFrameId, baseFrameId);
     nodeHandle.param("color_factor", colorFactor, colorFactor);
     nodeHandle.param("publish_Markers_Topic", publishMarkersTopic,publishMarkersTopic);
     nodeHandle.param("min_x_size", minSizeX,minSizeX);
     nodeHandle.param("min_y_size", minSizeY,minSizeY);
-    nodeHandle.param("min_range", maxRange,maxRange);
+    nodeHandle.param("max_range", maxRange,maxRange);
     nodeHandle.param("resolution", res,res);
     nodeHandle.param("publish_free_space", publishFreeSpace, publishFreeSpace);
     nodeHandle.param("sensor_model/hit", probHit, 0.85);
@@ -72,8 +71,8 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     fmarkerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, latchedTopics);
     mapPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, latchedTopics);
 
-    PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 15);
-    tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 15);
+    PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 5);
+    tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
     tfPCLSub->registerCallback(boost::bind(&TemporalOctomap::insertCloudCallback, this, boost::placeholders::_1));
 
     //Timer-Based Callbacks' timers
@@ -83,9 +82,6 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     if (publishMarkersTopic){
       PublishMarkers = nodeHandle.createTimer(ros::Rate(1), &TemporalOctomap::publishMarkers, this);
     }
-
-      
-    
 
     color.a = 1.0;
     color.r = 1.0;
@@ -132,7 +128,7 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
   Pointcloud OctCloud;
   pointCloud2ToOctomap(cloudOut, OctCloud); //Convert PointCloud2 to octomap::PointCloud
 
-  octree->insertPointCloud(OctCloud, sensorOrigin, maxRange, false, true); //Insert octomap::PointCloud to octree
+  octree->insertPointCloud(OctCloud, sensorOrigin, maxRange, true, true); //Insert octomap::PointCloud to octree
 
   octomap::point3d minPt, maxPt;
   minPt = octree->keyToCoord(updateBBXMin);
