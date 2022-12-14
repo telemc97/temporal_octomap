@@ -310,8 +310,8 @@ void TemporalOctomap::publishMarkers(const ros::TimerEvent& event){
     return;
   }
 
-  bool publishFreeMarkerArray = publishFreeSpace && (latchedTopics || fmarkerPub.getNumSubscribers() > 0);
-  bool publishMarkerArray = (latchedTopics || markerPub.getNumSubscribers() > 0);
+  // bool publishFreeMarkerArray = publishFreeSpace && (latchedTopics || fmarkerPub.getNumSubscribers() > 0);
+  // bool publishMarkerArray = (latchedTopics || markerPub.getNumSubscribers() > 0);
 
   visualization_msgs::MarkerArray occupiedNodesVis;
   visualization_msgs::MarkerArray freeNodesVis;
@@ -373,27 +373,29 @@ void TemporalOctomap::publishMarkers(const ros::TimerEvent& event){
   }
   markerPub.publish(occupiedNodesVis);
 
-  for (unsigned i= 0; i < freeNodesVis.markers.size(); ++i){
+  if (publishFreeSpace){
+    for (unsigned i= 0; i < freeNodesVis.markers.size(); ++i){
 
-    double size = octree->getNodeSize(i);
-    freeNodesVis.markers[i].header.frame_id = worldFrameId;
-    freeNodesVis.markers[i].header.stamp = ros::Time::now();
-    freeNodesVis.markers[i].ns = "map";
-    freeNodesVis.markers[i].id = i;
-    freeNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
-    freeNodesVis.markers[i].scale.x = size;
-    freeNodesVis.markers[i].scale.y = size;
-    freeNodesVis.markers[i].scale.z = size;
-    freeNodesVis.markers[i].pose = pose;
-    freeNodesVis.markers[i].color = colorFree;
+      double size = octree->getNodeSize(i);
+      freeNodesVis.markers[i].header.frame_id = worldFrameId;
+      freeNodesVis.markers[i].header.stamp = ros::Time::now();
+      freeNodesVis.markers[i].ns = "map";
+      freeNodesVis.markers[i].id = i;
+      freeNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
+      freeNodesVis.markers[i].scale.x = size;
+      freeNodesVis.markers[i].scale.y = size;
+      freeNodesVis.markers[i].scale.z = size;
+      freeNodesVis.markers[i].pose = pose;
+      freeNodesVis.markers[i].color = colorFree;
 
-    if (freeNodesVis.markers[i].points.size() > 0){
-      freeNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
-    }else{
-      freeNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+      if (freeNodesVis.markers[i].points.size() > 0){
+        freeNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
+      }else{
+        freeNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+      }
     }
+    fmarkerPub.publish(freeNodesVis);
   }
-  fmarkerPub.publish(freeNodesVis);
 }
 
 
