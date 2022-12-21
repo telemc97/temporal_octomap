@@ -3,12 +3,16 @@
 #include <std_srvs/Empty.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <chrono>
+
 
 #include <tf/transform_listener.h>
 #include <tf/message_filter.h>
 #include <message_filters/subscriber.h>
 
 #include <sensor_msgs/PointCloud2.h>
+#include <temporal_octomap/TemporalOctomapDebug.h>
+
 
 //PCL includes
 #include <pcl/point_types.h>
@@ -131,7 +135,7 @@ protected:
   octomap::OcTreeKey updateBBXMax;
   
   ros::NodeHandle nodeHandle;
-  ros::Publisher mapPub, markerPub, fmarkerPub;
+  ros::Publisher mapPub, markerPub, fmarkerPub, debugger;
   message_filters::Subscriber<sensor_msgs::PointCloud2>* PCLSub;
   tf::MessageFilter<sensor_msgs::PointCloud2>* tfPCLSub;
   ros::Timer checkNodesUpdateInterval;
@@ -139,6 +143,8 @@ protected:
   ros::Timer PublishOccupancy;
 
   ros::ServiceServer clearBBXService, resetService;
+
+  temporal_octomap::TemporalOctomapDebug debug_msg;
 
   tf::TransformListener tfListener;
   std::string worldFrameId;
@@ -166,6 +172,7 @@ protected:
   bool filterSpeckles;
   bool publishFreeSpace;
   bool publishMarkersTopic;
+  bool debug;
 
   std_msgs::ColorRGBA colorFree;
   std_msgs::ColorRGBA color;

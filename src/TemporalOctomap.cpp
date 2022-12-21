@@ -22,7 +22,8 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
   treeDepth(0),
   maxTreeDepth(0),
   minSizeX(0.0), minSizeY(0.0),
-  incrementalUpdate(false)
+  incrementalUpdate(false),
+  debug(true)
   {
     double probHit, probMiss, thresMin, thresMax, occupancyThres;
 
@@ -40,6 +41,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     nodeHandle.param("sensor_model/max", thresMax, 0.7);
     nodeHandle.param("Occupancy_Thres",occupancyThres, 0.45);
     nodeHandle.param("incremental_2D_projection", incrementalUpdate, incrementalUpdate);
+    nodeHandle.param("debug", debug, debug);
 
     nodeHandle.param("latch", latchedTopics, latchedTopics);
 
@@ -70,6 +72,10 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     markerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("occupied_cells_vis_array", 1, latchedTopics);
     fmarkerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, latchedTopics);
     mapPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, latchedTopics);
+    
+    if (debug){
+      debugger = nodeHandle.advertise<temporal_octomap::TemporalOctomapDebug>("Temporal_Octomap_Debug", 1, latchedTopics);
+    }
 
     PCLSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(nodeHandle, "/PointCloud", 5);
     tfPCLSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*PCLSub, tfListener, worldFrameId, 5);
@@ -116,7 +122,7 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
 
 //USING PointCloud2
 void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
-
+  auto start = std::chrono::high_resolution_clock::now();
   tf::StampedTransform sensorToWorldTf;
   tfListener.lookupTransform(worldFrameId, cloud->header.frame_id, cloud->header.stamp, sensorToWorldTf);
   tf::Point sensorOriginTf = sensorToWorldTf.getOrigin();
@@ -135,6 +141,13 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
   maxPt = octree->keyToCoord(updateBBXMax);
   ROS_DEBUG_STREAM("Updated area bounding box: "<< minPt << " - "<<maxPt);
   ROS_DEBUG_STREAM("Bounding box keys (after): " << updateBBXMin[0] << " " <<updateBBXMin[1] << " " << updateBBXMin[2] << " / " <<updateBBXMax[0] << " "<<updateBBXMax[1] << " "<< updateBBXMax[2]);
+  if (debug){
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    debug_msg.header.stamp = ros::Time::now();
+    debug_msg.total_time = duration.count();
+    debugger.publish(debug_msg);
+    }
 }
 
 
