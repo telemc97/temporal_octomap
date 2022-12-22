@@ -143,9 +143,9 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
   ROS_DEBUG_STREAM("Bounding box keys (after): " << updateBBXMin[0] << " " <<updateBBXMin[1] << " " << updateBBXMin[2] << " / " <<updateBBXMax[0] << " "<<updateBBXMax[1] << " "<< updateBBXMax[2]);
   if (debug){
     auto stop = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     debug_msg.header.stamp = ros::Time::now();
-    debug_msg.total_time = duration.count();
+    debug_msg.total_time = duration.count()*0.000001;
     debugger.publish(debug_msg);
     }
 }
