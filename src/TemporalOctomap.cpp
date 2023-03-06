@@ -67,8 +67,6 @@ TemporalOctomap::TemporalOctomap(const ros::NodeHandle &nh_)
     octree->getMetricMin(minX, minY, minZ);
     octree->getMetricMax(maxX, maxY, maxZ);
 
-
-
     markerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("occupied_cells_vis_array", 1, latchedTopics);
     fmarkerPub = nodeHandle.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, latchedTopics);
     mapPub = nodeHandle.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, latchedTopics);
@@ -148,6 +146,7 @@ void TemporalOctomap::insertCloudCallback(const sensor_msgs::PointCloud2::ConstP
     debug_msg.total_time = duration.count()*0.000001;
     debugger.publish(debug_msg);
     }
+
 }
 
 

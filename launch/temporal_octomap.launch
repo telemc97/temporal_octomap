@@ -22,7 +22,7 @@
 	<arg name="decaytime/sec"                         	default="3600"/>
 	<arg name="decaytime/nsec"                         	default="0"/>
 
-	<node pkg="temporal_octomap" type="temporal_octomap_node" name="temporal_octomap"> 
+	<node pkg="temporal_octomap" type="temporal_octomap" name="temporal_octomap"> 
 		<param name="frame_id"                   	 	value="$(arg frame_id)"/>
 		<param name="color_factor"                   	value="$(arg color_factor)"/>
 		<param name="publish_Markers_Topic"             value="$(arg publish_Markers_Topic)"/>
